@@ -44,7 +44,7 @@ bool UartFrame::addData(const char* data, size_t length) {
 		framePtr = framePtr + length;
 		return true;
 	} else {
-		Log::debug("Buffer filled, please ");
+		Log::debug("Buffer filled, please call send()");
 	}
 	return false;
 }

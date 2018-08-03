@@ -12,6 +12,8 @@
 #include <cstring>
 #include <cstdio>
 
+#define LOG Log::debug
+
 using namespace std;
 
 class Log {

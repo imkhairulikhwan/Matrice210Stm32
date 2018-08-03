@@ -48,6 +48,7 @@
 #include "usart.h"
 #include "gpio.h"
 #include "fmc.h"
+#include "math.h"
 
 /* USER CODE BEGIN Includes */
 #include "stm32f429i_discovery_lcd.h"
@@ -82,11 +83,11 @@ bool antiRebondFlag = 0;
 
 /*adc*/
 char displayBuffer [ADC_charNb];//for displaying
-uint8_t mes_xPos = 10;
-uint8_t mes_yPos = 120;
-uint8_t freq_xPos = 10;
-uint8_t freq_yPos = 152;
-int32_t new_ADCMeas;
+uint8_t title_xPos = 10;
+uint8_t title_yPos = 120;
+uint8_t loading_xPos = 10;
+uint8_t loading_yPos = 152;
+int32_t adcValue;
 
 #define BUFFER_SIZE 1
 uint8_t buffer[BUFFER_SIZE];
@@ -177,14 +178,32 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  	Log::debug("Code launched");
-	HAL_UART_Receive_IT(&huart5, &uart_rx_buffer, 1);
+  	LOG("Code launched");
+	HAL_ADC_Start_IT(&hadc1);	// Start ADC isr
+	HAL_UART_Receive_IT(&huart5, &uart_rx_buffer, 1);	// start UART isr
+	BSP_LCD_DisplayStringAt(title_xPos, title_yPos, (uint8_t*) "Nivitec", CENTER_MODE);
+	char loading[] = {'-', '\\', '|', '/' };
+	int loadingIndex = 0;
   	while (1)
 	{
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
-		/*/
+  		// Send continuously ADC value
+  		UartFrame frame;
+		frame.pushInt(0);
+		frame.pushInt(adcValue);	//
+		frame.send();
+		Log::debug("Send value");
+		char line[2];
+		line[0] = loading[loadingIndex];
+		line[1] = '\0';
+		loadingIndex = (++loadingIndex)%4;
+		BSP_LCD_DisplayStringAt(loading_xPos, loading_yPos, reinterpret_cast<uint8_t*>(line), CENTER_MODE);
+		HAL_Delay(1000);
+		//*/
+
+  		/*/ Search algo
 		BSP_LCD_DisplayStringAt(freq_xPos, freq_yPos, (uint8_t*) "20Hz", CENTER_MODE);
 		//Measures treatment
 		BSP_LCD_ClearStringLine(5);
@@ -306,14 +325,17 @@ void SystemClock_Config(void)
 	  */
 	void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	{
+		/*/ Send measure test
 		UartFrame frame;
 		frame.pushInt(0);
-		frame.pushFloat(12.38926941);
+		frame.pushInt((uint32_t)(rand()/100000.0));
 		frame.send();
-		Log::debug("Send value");
+		Log::debug("Send measure");
 		while(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_SET)
 			;
-		/*/
+		//*/
+
+		/*/ Search algo managment
 		if(antiRebondFlag == 0)
 		{
 			//Start ADC
@@ -342,13 +364,20 @@ void SystemClock_Config(void)
 	void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	{
 		__disable_irq();
-		/*To print ADC value on LCD*/
+
+		// ADC reading
+		adcValue = HAL_ADC_GetValue(hadc);
+		//*/
+
+		/*/ Search algo
+		// To print ADC value on LCD
 		new_ADCMeas = HAL_ADC_GetValue(hadc);
 
-		/*adding the ADC measure to the active list*/
+		// adding the ADC measure to the active list
 		searchAlgo.add(new_ADCMeas);
+		//*/
 
-		/* toggle LED for freq measure*/
+		// toggle LED for freq measure
 		BSP_LED_Toggle(DISCO_LED3);
 
 		__enable_irq();
