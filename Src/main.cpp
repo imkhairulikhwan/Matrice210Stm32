@@ -48,18 +48,15 @@
 #include "usart.h"
 #include "gpio.h"
 #include "fmc.h"
-#include "math.h"
 
 /* USER CODE BEGIN Includes */
 #include "stm32f429i_discovery_lcd.h"
 #include "stm32f429i_discovery.h"
-#include <list>
 
-#include "crossSearch.h"
-#include "measTreatement.h"
-#include <Log.h>
-#include <UartSender.h>
-#include <UartFrame.h>
+#include "Log.h"
+#include "UartSender.h"
+#include "UartFrame.h"
+#include "DVAReader.h"
 
 //#include "mbed.h"
 /* USER CODE END Includes */
@@ -69,30 +66,26 @@
 /* USER CODE BEGIN PV */
 
 /*Defines------------------*/
-#define ADC_charNb 4
 
 /* Variables---------------*/
-/*freq controle*/
-uint32_t period;
-char actualFreq [15];
-uint8_t freqSelector=0;
 
-
-/*button*/
-bool antiRebondFlag = 0;
-
-/*adc*/
-char displayBuffer [ADC_charNb];//for displaying
-uint8_t title_xPos = 10;
+// LCD text position
+uint8_t xPos = 10;
 uint8_t title_yPos = 120;
-uint8_t loading_xPos = 10;
-uint8_t loading_yPos = 152;
-int32_t adcValue;
-
-#define BUFFER_SIZE 1
-uint8_t buffer[BUFFER_SIZE];
-
+uint8_t loading_yPos = 150;
+uint8_t value_yPos = 180;
+// Rx buffer
 uint8_t uart_rx_buffer;
+
+// Adc
+DVAReader dvaReader;
+bool newValue;
+
+// Loading icon
+char loading[] = {'-', '\\', '|', '/' };
+
+// Display buffer
+char buffer[5];
 
 /* USER CODE END PV */
 
@@ -101,13 +94,11 @@ void SystemClock_Config(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
-void change_ADCFreq();
-
 
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
-crossSearch searchAlgo;
+
 /* USER CODE END 0 */
 
 /**
@@ -118,8 +109,7 @@ crossSearch searchAlgo;
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
-
+  int loadingIndex = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration----------------------------------------------------------*/
@@ -146,17 +136,12 @@ int main(void)
   MX_SPI5_Init();
   MX_ADC1_Init();
   MX_TIM1_Init();
-  MX_TIM14_Init();
   MX_USART1_UART_Init();
   MX_I2C3_Init();
   MX_UART5_Init();
   /* USER CODE BEGIN 2 */
 
-  //* Timer1 init
-  HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_1);
-  period = htim1.Instance->ARR;
-
-  //* LCD init
+  // LCD init
   BSP_LCD_Init();
   BSP_LCD_LayerDefaultInit(LCD_BACKGROUND_LAYER, LCD_FRAME_BUFFER);
   BSP_LCD_LayerDefaultInit(LCD_FOREGROUND_LAYER, LCD_FRAME_BUFFER);
@@ -166,53 +151,54 @@ int main(void)
   BSP_LCD_Clear(LCD_COLOR_WHITE);
   BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
 
-  //* LED init for LCD measure
+  // LED init for LCD measure
   BSP_LED_Init(DISCO_LED3);
 
   // Uart config
   UartSender::getInstance()->config(&huart1, &huart5);
+  newValue = false;
 
-  //*Algo init
-  //searchAlgo.init();
+  LOG("Code running");
+  HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_1);		// Timer 1 init
+  HAL_ADC_Start_IT(&hadc1);							// Start ADC isr
+  HAL_UART_Receive_IT(&huart5, &uart_rx_buffer, 1);	// Start UART isr
+
+  char loadingBf[2];
+  loadingBf[1] = '\0';
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  	LOG("Code launched");
-	HAL_ADC_Start_IT(&hadc1);	// Start ADC isr
-	HAL_UART_Receive_IT(&huart5, &uart_rx_buffer, 1);	// start UART isr
-	BSP_LCD_DisplayStringAt(title_xPos, title_yPos, (uint8_t*) "Nivitec", CENTER_MODE);
-	char loading[] = {'-', '\\', '|', '/' };
-	int loadingIndex = 0;
   	while (1)
 	{
+  		// newValue is set in HAL_ADC_ConvCpltCallback
+  		// The goal is to send antenna value each second
+  		if(newValue) {
+  			// Get last antenna value
+  			BSP_LCD_Clear(0xFFFFFFFF);
+  			uint32_t val = dvaReader.getCurrentValue();
+  			newValue = false;
+  			// Send value to PI
+  			UartFrame frame;
+			frame.pushInt(0);
+			frame.pushInt(val);
+			frame.send();
+			// UART log to PC
+  			LOG("New DVA value : %u", val);
+  			// Display
+  			BSP_LCD_DisplayStringAt(xPos, title_yPos, (uint8_t*) "Nivitec", CENTER_MODE);
+  			// Update loading icon on LCD
+  			loadingBf[0] = loading[loadingIndex];
+			loadingIndex = (++loadingIndex)%4;
+			BSP_LCD_DisplayStringAt(xPos, loading_yPos, reinterpret_cast<uint8_t*>(loadingBf), CENTER_MODE);
+			// Display value
+			sprintf(buffer, "%u", val);
+			BSP_LCD_DisplayStringAt(xPos, value_yPos, reinterpret_cast<uint8_t*>(buffer), CENTER_MODE);
+
+  		}
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
-  		// Send continuously ADC value
-  		UartFrame frame;
-		frame.pushInt(0);
-		frame.pushInt(adcValue);	//
-		frame.send();
-		Log::debug("Send value");
-		char line[2];
-		line[0] = loading[loadingIndex];
-		line[1] = '\0';
-		loadingIndex = (++loadingIndex)%4;
-		BSP_LCD_DisplayStringAt(loading_xPos, loading_yPos, reinterpret_cast<uint8_t*>(line), CENTER_MODE);
-		HAL_Delay(1000);
-		//*/
-
-  		/*/ Search algo
-		BSP_LCD_DisplayStringAt(freq_xPos, freq_yPos, (uint8_t*) "20Hz", CENTER_MODE);
-		//Measures treatment
-		BSP_LCD_ClearStringLine(5);
-		//BSP_LCD_ClearStringLine(6);
-		sprintf(displayBuffer, "%lu", new_ADCMeas);
-		BSP_LCD_DisplayStringAt(mes_xPos, mes_yPos, (uint8_t*) displayBuffer, CENTER_MODE);
-
-		searchAlgo.process();
-		//*/
 	}
   /* USER CODE END 3 */
 
@@ -299,24 +285,6 @@ void SystemClock_Config(void)
 		Log::debug("UART_RxCpltCallback : %c", uart_rx_buffer);
 		HAL_UART_Receive_IT(&huart5, &uart_rx_buffer, 1);
 	}
-	/**
-	  * @brief new value for TIM1 counter register to change ADC measure freq
-	  * @param None
-	  * @retval None
-	  */
-	void change_ADCFreq()
-	{
-		period /= 10;
-		freqSelector += 1;
-		if(period <= 1 )
-		{
-			period = 2250;
-			freqSelector = 0;
-		}
-
-		__HAL_TIM_SET_AUTORELOAD(&htim1, period);
-		//htim1.Instance->ARR = period;
-	}
 
 	/**
 	  * @brief EXTI line detection callbacks
@@ -334,26 +302,6 @@ void SystemClock_Config(void)
 		while(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == GPIO_PIN_SET)
 			;
 		//*/
-
-		/*/ Search algo managment
-		if(antiRebondFlag == 0)
-		{
-			//Start ADC
-			// ADC init
-			HAL_ADC_Start_IT(&hadc1);
-
-			//Start SM for measure
-			searchAlgo.startMeasure();
-
-			//clear to display
-			BSP_LCD_ClearStringLine(5);
-			BSP_LCD_ClearStringLine(6);
-
-			// starting timer for debouncer
-			HAL_TIM_Base_Start_IT(&htim14);
-			antiRebondFlag = 1;
-		}
-	//*/
 	}
 
 	/**
@@ -363,22 +311,24 @@ void SystemClock_Config(void)
 	  */
 	void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	{
+		// Called each 25 ms (from TIM1)
 		__disable_irq();
 
 		// ADC reading
-		adcValue = HAL_ADC_GetValue(hadc);
-		//*/
-
-		/*/ Search algo
-		// To print ADC value on LCD
-		new_ADCMeas = HAL_ADC_GetValue(hadc);
-
-		// adding the ADC measure to the active list
-		searchAlgo.add(new_ADCMeas);
-		//*/
-
+		uint32_t value = HAL_ADC_GetValue(hadc);
+		BSP_LED_On(DISCO_LED3);
+		// Add current ADC value to DVA reader
+		if(dvaReader.addAdcValue(value)) {
+			// Enough values have been read to determine current
+			// antenna value
+			// We cannot directly use ADC value as antenna value
+			// because the signal is pulsed
+			newValue = true;
+			// Antenna value will be read in main
+		}
+		BSP_LED_Off(DISCO_LED3);
 		// toggle LED for freq measure
-		BSP_LED_Toggle(DISCO_LED3);
+		//BSP_LED_Toggle(DISCO_LED3);
 
 		__enable_irq();
 
@@ -398,13 +348,7 @@ void SystemClock_Config(void)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
-	if (htim->Instance == TIM14)
-	{
-		antiRebondFlag = 0;
-		HAL_TIM_Base_Stop(&htim14);
-		__HAL_TIM_CLEAR_FLAG(&htim14, TIM_FLAG_UPDATE);
-		//BSP_LCD_DisplayStringAtLine(7, (uint8_t*) "TIM14");
-	}
+
   /* USER CODE END Callback 0 */
   if (htim->Instance == TIM6) {
     HAL_IncTick();

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Project>
-<ProjectName>C:\Users\jonathan.michel\Desktop\workspace-sw\ADConverter\\ADConverter</ProjectName>
+<ProjectName>C:\Users\jonathan.michel\Desktop\Matrice210\stm32\workspace\Matrice210Stm32\\Matrice210Stm32</ProjectName>
 <ProjectNature>C</ProjectNature> 
 <CMSIS>..\Drivers\CMSIS</CMSIS>
 <HAL_Driver>C:\Users\jonathan.michel\STM32Cube\Repository\STM32Cube_FW_F4_V1.21.0\Drivers\CMSIS</HAL_Driver>
@@ -22,7 +22,7 @@
 
 <configs>
   <config>
-    <name>ADConverter</name>				
+    <name>Matrice210Stm32</name>				
     <device>STM32F429ZITx</device>		 
     <heapSize>0x200</heapSize>
     <stackSize>0x400</stackSize>

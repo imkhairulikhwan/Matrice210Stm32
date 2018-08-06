@@ -53,7 +53,6 @@ void SysTick_Handler(void);
 void EXTI0_IRQHandler(void);
 void ADC_IRQHandler(void);
 void TIM1_CC_IRQHandler(void);
-void TIM8_TRG_COM_TIM14_IRQHandler(void);
 void UART5_IRQHandler(void);
 void TIM6_DAC_IRQHandler(void);
 
