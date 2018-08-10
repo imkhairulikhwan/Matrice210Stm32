@@ -31,9 +31,11 @@ public:
 	virtual ~DVAReader();
 	bool addAdcValue(uint32_t value);
 	uint32_t getCurrentValue();
+	bool isNewValue();
 private:
 	list<uint32_t>measures;
 	uint32_t current;
+	bool newValue;
 };
 
 #endif /* DVAREADER_H_ */

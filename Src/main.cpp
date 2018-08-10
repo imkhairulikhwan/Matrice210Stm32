@@ -57,6 +57,7 @@
 #include "UartSender.h"
 #include "UartFrame.h"
 #include "DVAReader.h"
+#include "CrossSearch.h"
 
 //#include "mbed.h"
 /* USER CODE END Includes */
@@ -79,7 +80,9 @@ uint8_t uart_rx_buffer;
 
 // Adc
 DVAReader dvaReader;
-bool newValue;
+
+//search algorithm
+CrossSearch searchAlgo;
 
 // Loading icon
 char loading[] = {'-', '\\', '|', '/' };
@@ -156,7 +159,9 @@ int main(void)
 
   // Uart config
   UartSender::getInstance()->config(&huart1, &huart5);
-  newValue = false;
+
+  //Search algo intialization
+searchAlgo.init();
 
   LOG("Code running");
   HAL_TIM_OC_Start_IT(&htim1, TIM_CHANNEL_1);		// Timer 1 init
@@ -173,11 +178,10 @@ int main(void)
 	{
   		// newValue is set in HAL_ADC_ConvCpltCallback
   		// The goal is to send antenna value each second
-  		if(newValue) {
+  		if(dvaReader.isNewValue()) {
   			// Get last antenna value
   			BSP_LCD_Clear(0xFFFFFFFF);
   			uint32_t val = dvaReader.getCurrentValue();
-  			newValue = false;
   			// Send value to PI
   			UartFrame frame;
 			frame.pushInt(0);
@@ -194,7 +198,8 @@ int main(void)
 			// Display value
 			sprintf(buffer, "%u", val);
 			BSP_LCD_DisplayStringAt(xPos, value_yPos, reinterpret_cast<uint8_t*>(buffer), CENTER_MODE);
-
+			//give the new value to the state machine of the search algo
+			searchAlgo.process(val);
   		}
   /* USER CODE END WHILE */
 
@@ -318,14 +323,7 @@ void SystemClock_Config(void)
 		uint32_t value = HAL_ADC_GetValue(hadc);
 		BSP_LED_On(DISCO_LED3);
 		// Add current ADC value to DVA reader
-		if(dvaReader.addAdcValue(value)) {
-			// Enough values have been read to determine current
-			// antenna value
-			// We cannot directly use ADC value as antenna value
-			// because the signal is pulsed
-			newValue = true;
-			// Antenna value will be read in main
-		}
+		dvaReader.addAdcValue(value);
 		BSP_LED_Off(DISCO_LED3);
 		// toggle LED for freq measure
 		//BSP_LED_Toggle(DISCO_LED3);
